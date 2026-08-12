@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07070d">
+<title>Quiz de Requisitos</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap" id="root">
+
+  <!-- ============ 1. entrar ============ -->
+  <section class="screen on" id="s-join">
+    <div style="max-width:460px;margin:min(8vh,70px) auto 0">
+      <div class="brand" style="margin-bottom:26px">
+        <span class="dot">🎯</span>
+        <div><h1>Quiz de Requisitos</h1><small>RF · RNF · Regra de negócio</small></div>
+      </div>
+      <div class="card stack">
+        <div>
+          <label for="i-code">Código da sala</label>
+          <input id="i-code" class="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+        </div>
+        <div>
+          <label for="i-name">Seu nome</label>
+          <input id="i-name" maxlength="22" autocomplete="off" placeholder="Como te chamam?">
+        </div>
+        <div class="err" id="join-err"></div>
+        <button class="btn" id="b-join">Entrar na sala →</button>
+        <p class="muted" style="text-align:center">O código aparece no telão. <a href="/host" style="color:var(--accent-2)">Sou o apresentador</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. lobby / equipes ============ -->
+  <section class="screen" id="s-lobby">
+    <div style="max-width:640px;margin:0 auto" class="stack">
+      <div class="card stack">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div>
+            <div class="qtag">Sala <span id="l-code" style="color:var(--txt)"></span></div>
+            <h2 id="l-hello" style="margin-top:4px">Olá!</h2>
+          </div>
+          <span class="chip" id="l-count">0 na sala</span>
+        </div>
+        <div id="l-myteam"></div>
+      </div>
+
+      <div class="card stack">
+        <div>
+          <h2 style="font-size:19px">Equipes</h2>
+          <p class="muted">Toque para entrar. A pontuação da equipe é a <b>média</b> dos integrantes — time pequeno também ganha.</p>
+        </div>
+        <div class="team-grid" id="l-teams"></div>
+        <p class="muted" id="l-empty">Nenhuma equipe ainda. Crie a primeira!</p>
+        <div class="row">
+          <input id="i-team" maxlength="18" placeholder="Nome da nova equipe" style="flex:1;min-width:180px">
+          <button class="btn slim" id="b-team">Criar equipe</button>
+        </div>
+        <div class="err" id="team-err"></div>
+      </div>
+
+      <p class="muted" style="text-align:center">⏳ Aguardando o apresentador iniciar a partida…</p>
+    </div>
+  </section>
+
+  <!-- ============ 3. pergunta ============ -->
+  <section class="screen" id="s-q">
+    <div style="max-width:760px;margin:0 auto" class="stack">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <span class="qtag" id="q-num">Pergunta 1</span>
+        <span class="chip" id="q-me">0 pts</span>
+      </div>
+      <div class="timer-bar" id="q-timer"><i style="width:100%"></i></div>
+      <div class="card"><p class="qtext" id="q-text" style="font-size:clamp(18px,4.4vw,25px)"></p></div>
+      <div class="opts" id="q-opts"></div>
+      <div id="q-waiting" class="card hidden" style="text-align:center">
+        <div class="big-num">✓</div>
+        <p class="muted">Resposta enviada! Segura aí que já vamos revelar…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. resultado da rodada ============ -->
+  <section class="screen" id="s-reveal">
+    <div style="max-width:640px;margin:0 auto" class="stack">
+      <div class="card" style="text-align:center">
+        <div class="big-num" id="r-icon">✓</div>
+        <h2 id="r-title">Acertou!</h2>
+        <p class="muted" id="r-sub" style="margin-top:6px"></p>
+        <div class="big-num" id="r-gain" style="color:var(--ok);margin-top:10px">+0</div>
+      </div>
+      <div class="card stack">
+        <div><span class="qtag">Resposta correta</span><p style="font-weight:750;font-size:17px;margin-top:6px" id="r-ans"></p></div>
+        <div class="explain" id="r-exp"></div>
+      </div>
+      <div class="row" style="justify-content:space-around;text-align:center">
+        <div><div class="big-num" id="r-score" style="font-size:26px">0</div><span class="muted">pontos</span></div>
+        <div><div class="big-num" id="r-rank" style="font-size:26px">-</div><span class="muted">posição</span></div>
+        <div><div class="big-num" id="r-streak" style="font-size:26px">0</div><span class="muted">sequência</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. fim ============ -->
+  <section class="screen" id="s-end">
+    <div style="max-width:640px;margin:0 auto" class="stack">
+      <div class="card" style="text-align:center">
+        <div style="font-size:52px" id="e-emoji">🏆</div>
+        <h2 id="e-title">Fim de jogo!</h2>
+        <div class="big-num" id="e-score" style="margin-top:6px">0</div>
+        <p class="muted" id="e-sub"></p>
+      </div>
+      <div class="card stack">
+        <h2 style="font-size:18px">Ranking das equipes</h2>
+        <div class="rank" id="e-teams"></div>
+      </div>
+      <div class="card stack">
+        <h2 style="font-size:18px">Seu desempenho</h2>
+        <div class="row" style="justify-content:space-around;text-align:center">
+          <div><div class="big-num" id="e-hits" style="font-size:26px">0</div><span class="muted">acertos</span></div>
+          <div><div class="big-num" id="e-miss" style="font-size:26px">0</div><span class="muted">erros</span></div>
+          <div><div class="big-num" id="e-pos" style="font-size:26px">-</div><span class="muted">posição</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const OPT_C = ['#3b82f6', '#a855f7', '#f59e0b', '#10b981'];
+const OPT_G = ['▲', '◆', '●', '■'];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const me = {
+  code: localStorage.getItem('qrf.code') || '',
+  pid: localStorage.getItem('qrf.pid') || '',
+  name: localStorage.getItem('qrf.name') || '',
+};
+let es = null, snap = null, lastPhase = null, tickTimer = null;
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === id));
+}
+
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Algo deu errado.');
+  return data;
+}
+
+function beep(ok) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(ok ? 660 : 200, ctx.currentTime);
+    if (ok) o.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + .14);
+    g.gain.setValueAtTime(.12, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .3);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .32);
+  } catch {}
+}
+
+// ---------------- entrar ----------------
+const codeInput = $('#i-code');
+codeInput.value = me.code;
+$('#i-name').value = me.name;
+codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+
+const urlCode = new URLSearchParams(location.search).get('code');
+if (urlCode) codeInput.value = urlCode.toUpperCase();
+
+$('#b-join').addEventListener('click', doJoin);
+$('#i-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
+
+async function doJoin() {
+  const code = codeInput.value.trim().toUpperCase();
+  const name = $('#i-name').value.trim();
+  $('#join-err').textContent = '';
+  if (code.length !== 4) return ($('#join-err').textContent = 'O código tem 4 letras.');
+  if (name.length < 2) return ($('#join-err').textContent = 'Digite seu nome.');
+
+  $('#b-join').disabled = true;
+  try {
+    const samRoom = me.code === code ? me.pid : '';
+    const r = await post('/api/join', { code, name, pid: samRoom });
+    me.code = r.code; me.pid = r.pid; me.name = name;
+    localStorage.setItem('qrf.code', me.code);
+    localStorage.setItem('qrf.pid', me.pid);
+    localStorage.setItem('qrf.name', me.name);
+    connect();
+  } catch (err) {
+    $('#join-err').textContent = err.message;
+  } finally {
+    $('#b-join').disabled = false;
+  }
+}
+
+// ---------------- equipes ----------------
+$('#b-team').addEventListener('click', async () => {
+  const name = $('#i-team').value.trim();
+  $('#team-err').textContent = '';
+  try {
+    await post('/api/team/create', { code: me.code, pid: me.pid, name });
+    $('#i-team').value = '';
+  } catch (err) { $('#team-err').textContent = err.message; }
+});
+$('#i-team').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#b-team').click(); });
+
+window.joinTeam = async (id) => {
+  try { await post('/api/team/join', { code: me.code, pid: me.pid, teamId: id }); }
+  catch (err) { $('#team-err').textContent = err.message; }
+};
+window.leaveTeam = async () => {
+  try { await post('/api/team/leave', { code: me.code, pid: me.pid }); } catch {}
+};
+
+// ---------------- conexão ----------------
+function connect() {
+  if (es) es.close();
+  es = new EventSource(`/api/stream?code=${encodeURIComponent(me.code)}&pid=${encodeURIComponent(me.pid)}`);
+  es.onmessage = (ev) => { snap = JSON.parse(ev.data); render(); };
+  es.onerror = () => { /* EventSource reconecta sozinho */ };
+}
+
+// ---------------- render ----------------
+function render() {
+  const s = snap;
+  if (!s || !s.you) return;
+  const phaseChanged = s.phase !== lastPhase;
+  lastPhase = s.phase;
+
+  if (s.phase === 'lobby') { show('s-lobby'); renderLobby(s); }
+  else if (s.phase === 'question') { show('s-q'); renderQuestion(s, phaseChanged); }
+  else if (s.phase === 'reveal') { show('s-reveal'); renderReveal(s, phaseChanged); }
+  else if (s.phase === 'ended') { show('s-end'); renderEnd(s); }
+}
+
+function renderLobby(s) {
+  $('#l-code').textContent = s.code;
+  $('#l-hello').textContent = 'Olá, ' + s.you.name + '!';
+  $('#l-count').textContent = s.playerCount + (s.playerCount === 1 ? ' na sala' : ' na sala');
+
+  const t = s.you.team;
+  $('#l-myteam').innerHTML = t
+    ? `<div class="team mine" style="--c:${t.color};cursor:default">
+         <div class="t-name">${esc(t.emoji)} ${esc(t.name)}</div>
+         <div class="t-meta">Você está nesta equipe ·
+           <a href="#" onclick="leaveTeam();return false" style="color:var(--accent-2)">sair</a></div>
+       </div>`
+    : `<p class="muted">Você ainda não tem equipe — escolha uma abaixo ou crie a sua. Também dá pra jogar sozinho.</p>`;
+
+  const teams = s.teams;
+  $('#l-empty').classList.toggle('hidden', teams.length > 0);
+  $('#l-teams').innerHTML = teams.map((tm) => `
+    <button class="team ${t && t.id === tm.id ? 'mine' : ''}" style="--c:${tm.color}" onclick="joinTeam('${tm.id}')">
+      <div class="t-name">${esc(tm.emoji)} ${esc(tm.name)}</div>
+      <div class="t-meta">${tm.size} ${tm.size === 1 ? 'integrante' : 'integrantes'}</div>
+    </button>`).join('');
+}
+
+function renderQuestion(s, fresh) {
+  $('#q-num').textContent = `Pergunta ${s.qIndex + 1} de ${s.total}`;
+  $('#q-me').textContent = s.you.score + ' pts';
+  $('#q-text').textContent = s.question.q;
+
+  const answered = s.you.answer !== null;
+  $('#q-waiting').classList.toggle('hidden', !answered);
+
+  if (fresh || $('#q-opts').children.length !== s.question.opts.length) {
+    $('#q-opts').className = 'opts' + (s.question.opts.length === 4 ? ' duo' : '');
+    $('#q-opts').innerHTML = s.question.opts.map((o, i) =>
+      `<button class="opt" style="--c:${OPT_C[i]}" data-i="${i}">
+         <span class="glyph">${OPT_G[i]}</span><span>${esc(o)}</span>
+       </button>`).join('');
+    $('#q-opts').querySelectorAll('.opt').forEach((b) => {
+      b.addEventListener('click', async () => {
+        $('#q-opts').querySelectorAll('.opt').forEach((x) => {
+          x.disabled = true;
+          if (x !== b) x.classList.add('dim');
+        });
+        b.classList.add('chosen');
+        try { await post('/api/answer', { code: me.code, pid: me.pid, choice: Number(b.dataset.i) }); }
+        catch {}
+      });
+    });
+  }
+
+  if (answered) {
+    $('#q-opts').querySelectorAll('.opt').forEach((x) => {
+      x.disabled = true;
+      x.classList.toggle('dim', Number(x.dataset.i) !== s.you.answer);
+      x.classList.toggle('chosen', Number(x.dataset.i) === s.you.answer);
+    });
+  }
+  startTicker(s);
+}
+
+function startTicker(s) {
+  clearInterval(tickTimer);
+  const total = s.endsAt - s.serverTime;
+  const drift = Date.now() - s.serverTime;
+  const bar = $('#q-timer');
+  const fill = bar.querySelector('i');
+  tickTimer = setInterval(() => {
+    const left = Math.max(0, s.endsAt - (Date.now() - drift));
+    const pct = total > 0 ? (left / total) * 100 : 0;
+    fill.style.width = pct + '%';
+    bar.classList.toggle('warn', pct < 35);
+    if (left <= 0) clearInterval(tickTimer);
+  }, 120);
+}
+
+function renderReveal(s, fresh) {
+  clearInterval(tickTimer);
+  const you = s.you;
+  const skipped = you.answer === null;
+  const ok = you.correct === true;
+
+  $('#r-icon').textContent = skipped ? '⏱️' : ok ? '✅' : '❌';
+  $('#r-title').textContent = skipped ? 'Tempo esgotado' : ok ? 'Acertou!' : 'Não foi dessa vez';
+  $('#r-title').className = skipped ? '' : ok ? 'pill-ok' : 'pill-bad';
+  $('#r-sub').textContent = ok
+    ? (you.streak > 1 ? `🔥 ${you.streak} acertos seguidos!` : 'Mandou bem.')
+    : skipped ? 'Você não respondeu a tempo.' : 'Lê a explicação que a próxima sai.';
+  $('#r-gain').textContent = (you.gained > 0 ? '+' : '') + you.gained;
+  $('#r-gain').style.color = you.gained > 0 ? 'var(--ok)' : 'var(--txt-dim)';
+  $('#r-ans').textContent = s.question.opts[s.reveal.ans];
+  $('#r-exp').textContent = s.reveal.exp;
+  $('#r-score').textContent = you.score;
+  $('#r-rank').textContent = you.rank + 'º';
+  $('#r-streak').textContent = you.streak;
+  if (fresh && !skipped) beep(ok);
+}
+
+function renderEnd(s) {
+  const you = s.you;
+  const hits = you.history.filter((h) => h.correct).length;
+  const pos = you.rank;
+  $('#e-emoji').textContent = pos === 1 ? '🏆' : pos <= 3 ? '🥈' : hits >= s.total / 2 ? '🎉' : '💪';
+  $('#e-title').textContent = pos === 1 ? 'Você venceu!' : `${pos}º lugar`;
+  $('#e-score').textContent = you.score + ' pts';
+  $('#e-sub').textContent = you.team ? `Jogando por ${you.team.emoji} ${you.team.name}` : 'Jogando sozinho';
+  $('#e-hits').textContent = hits;
+  $('#e-miss').textContent = s.total - hits;
+  $('#e-pos').textContent = pos + 'º';
+
+  $('#e-teams').innerHTML = s.teams.length ? s.teams.map((t, i) => `
+    <div class="rank-row ${i === 0 ? 'top1' : ''}" style="animation-delay:${i * 60}ms">
+      <span class="pos">${i + 1}</span>
+      <span class="who">${esc(t.emoji)} ${esc(t.name)}
+        <span class="sub">· ${t.size} ${t.size === 1 ? 'pessoa' : 'pessoas'}</span></span>
+      <span class="val" style="color:${t.color}">${t.score}</span>
+    </div>`).join('') : '<p class="muted">Ninguém formou equipe nesta partida.</p>';
+}
+
+// reconecta automaticamente se já estava numa sala
+if (me.code && me.pid) {
+  fetch('/api/join', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: me.code, name: me.name, pid: me.pid }),
+  }).then((r) => r.json()).then((r) => {
+    if (r.pid) { me.pid = r.pid; localStorage.setItem('qrf.pid', r.pid); connect(); }
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>

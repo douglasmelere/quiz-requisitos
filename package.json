@@ -1,0 +1,15 @@
+{
+  "name": "quiz-requisitos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Quiz em tempo real sobre requisitos funcionais, nao funcionais e regras de negocio, com equipes e placar ao vivo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}
