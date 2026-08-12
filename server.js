@@ -14,6 +14,7 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const { QUESTIONS } = require('./questions');
+const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -22,6 +23,11 @@ const QUESTION_MS = Number(process.env.QUESTION_MS || 25000); // tempo por pergu
 const REVEAL_MS = Number(process.env.REVEAL_MS || 9000);      // tempo mostrando a resposta
 const DEFAULT_ROUND = Number(process.env.ROUND_SIZE || 12);   // perguntas por partida
 const ROOM_TTL_MS = 1000 * 60 * 60 * 6;                       // sala morre após 6h ociosa
+const MAX_HISTORY = Number(process.env.MAX_HISTORY || 300);   // partidas guardadas
+
+// Token do painel /historico. Se não vier por env, é sorteado e impresso no boot.
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || crypto.randomBytes(4).toString('hex').toUpperCase();
+const ADMIN_TOKEN_GERADO = !process.env.ADMIN_TOKEN;
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -90,6 +96,128 @@ function getRoom(code) {
   const room = rooms.get(String(code || '').toUpperCase().trim());
   if (room) room.touchedAt = now();
   return room;
+}
+
+// ------------------------------------------------------- persistência (volume)
+
+/** @type {Array} partidas encerradas, mais recente primeiro */
+let history = [];
+
+function roomToJSON(room) {
+  return {
+    code: room.code,
+    hostToken: room.hostToken,
+    phase: room.phase,
+    qIndex: room.qIndex,
+    questions: room.questions,
+    players: [...room.players.values()],
+    teams: [...room.teams.values()],
+    touchedAt: room.touchedAt,
+  };
+}
+
+function roomFromJSON(raw) {
+  const room = {
+    code: raw.code,
+    hostToken: raw.hostToken,
+    // partida em andamento volta para o começo da pergunta atual
+    phase: raw.phase === 'question' || raw.phase === 'reveal' ? 'question' : raw.phase,
+    qIndex: raw.qIndex,
+    questions: raw.questions,
+    players: new Map((raw.players || []).map((p) => [p.id, p])),
+    teams: new Map((raw.teams || []).map((t) => [t.id, t])),
+    clients: new Set(),
+    phaseEndsAt: 0,
+    timer: null,
+    touchedAt: raw.touchedAt || now(),
+  };
+  return room;
+}
+
+const persistRooms = () => store.write('rooms.json', () => [...rooms.values()].map(roomToJSON));
+const persistHistory = () => store.write('history.json', () => history, 200);
+
+function loadFromDisk() {
+  history = store.read('history.json', []) || [];
+
+  const saved = store.read('rooms.json', []) || [];
+  let retomadas = 0;
+  for (const raw of saved) {
+    if (!raw || !raw.code || rooms.has(raw.code)) continue;
+    if (now() - (raw.touchedAt || 0) > ROOM_TTL_MS) continue;
+    const room = roomFromJSON(raw);
+    rooms.set(room.code, room);
+    retomadas++;
+    // retoma o cronômetro da pergunta em que a sala parou
+    if (room.phase === 'question' && room.qIndex >= 0) {
+      room.qIndex--;               // startQuestion incrementa de novo
+      setTimeout(() => startQuestion(room), 1500);
+    }
+  }
+  if (history.length || retomadas) {
+    console.log(`   Retomado:      ${retomadas} sala(s) ativa(s), ${history.length} partida(s) no histórico`);
+  }
+}
+
+/** Guarda o resultado de uma partida encerrada. */
+function recordMatch(room) {
+  const teams = teamStandings(room);
+  const players = playerStandings(room);
+  if (!players.length) return;
+
+  history.unshift({
+    id: uid(),
+    code: room.code,
+    endedAt: now(),
+    questionCount: room.questions.length,
+    teams: teams.map((t) => ({ name: t.name, emoji: t.emoji, color: t.color, score: t.score, total: t.total, size: t.size })),
+    players: players.map((p) => {
+      const full = room.players.get(p.id);
+      const hits = full ? full.history.filter((h) => h.correct).length : 0;
+      return {
+        name: p.name,
+        score: p.score,
+        hits,
+        answered: full ? full.history.length : 0,
+        team: p.team ? p.team.name : null,
+      };
+    }),
+  });
+  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  persistHistory();
+}
+
+/** Ranking acumulado de todas as partidas salvas. */
+function aggregate() {
+  const players = new Map();
+  const teams = new Map();
+
+  for (const match of history) {
+    match.players.forEach((p, i) => {
+      const key = p.name.toLowerCase();
+      const row = players.get(key) || { name: p.name, points: 0, matches: 0, wins: 0, hits: 0, answered: 0 };
+      row.points += p.score;
+      row.matches++;
+      row.hits += p.hits;
+      row.answered += p.answered || 0;
+      if (i === 0) row.wins++;
+      players.set(key, row);
+    });
+    match.teams.forEach((t, i) => {
+      const key = t.name.toLowerCase();
+      const row = teams.get(key) || { name: t.name, emoji: t.emoji, color: t.color, points: 0, matches: 0, wins: 0 };
+      row.points += t.score;
+      row.matches++;
+      if (i === 0) row.wins++;
+      teams.set(key, row);
+    });
+  }
+
+  const finish = (m) => [...m.values()]
+    .map((r) => ({ ...r, avg: r.matches ? Math.round(r.points / r.matches) : 0 }))
+    .sort((a, b) => b.points - a.points || b.wins - a.wins);
+
+  return { players: finish(players), teams: finish(teams) };
 }
 
 function currentQuestion(room) {
@@ -209,6 +337,7 @@ function push(room) {
       room.clients.delete(client);
     }
   }
+  persistRooms();
 }
 
 // -------------------------------------------------------- máquina de estados
@@ -269,7 +398,20 @@ function endGame(room) {
   clearTimer(room);
   room.phase = 'ended';
   room.phaseEndsAt = 0;
+  recordMatch(room);
   push(room);
+}
+
+/** Encerra a sala e avisa quem estiver conectado. */
+function closeRoom(room) {
+  clearTimer(room);
+  room.phase = 'closed';
+  push(room);
+  for (const client of room.clients) {
+    try { client.res.end(); } catch {}
+  }
+  rooms.delete(room.code);
+  persistRooms();
 }
 
 function restartGame(room) {
@@ -472,6 +614,83 @@ const api = {
     restartGame(room);
     json(res, 200, { ok: true });
   },
+
+  // ---- reset: desfaz todas as equipes, mantém os jogadores na sala
+  async 'POST /api/host/reset-teams'(req, res, body) {
+    const room = getRoom(body.code);
+    if (!room || room.hostToken !== body.hostToken) return json(res, 403, { error: 'Sem permissão.' });
+    room.teams.clear();
+    for (const p of room.players.values()) p.teamId = null;
+    push(room);
+    json(res, 200, { ok: true });
+  },
+
+  // ---- reset: zera tudo (jogadores, equipes e placar) e volta ao lobby
+  async 'POST /api/host/reset-all'(req, res, body) {
+    const room = getRoom(body.code);
+    if (!room || room.hostToken !== body.hostToken) return json(res, 403, { error: 'Sem permissão.' });
+    room.teams.clear();
+    room.players.clear();
+    restartGame(room);
+    json(res, 200, { ok: true });
+  },
+
+  // ---- encerra a sala de vez
+  async 'POST /api/host/close'(req, res, body) {
+    const room = getRoom(body.code);
+    if (!room || room.hostToken !== body.hostToken) return json(res, 403, { error: 'Sem permissão.' });
+    closeRoom(room);
+    json(res, 200, { ok: true });
+  },
+
+  // ---- painel: histórico acumulado
+  async 'POST /api/history'(req, res, body) {
+    const agg = aggregate();
+    json(res, 200, {
+      persistente: store.isWritable(),
+      salasAtivas: rooms.size,
+      partidas: history.length,
+      ranking: agg,
+      matches: history.slice(0, 30).map((m) => ({
+        id: m.id, code: m.code, endedAt: m.endedAt, questionCount: m.questionCount,
+        teams: m.teams.slice(0, 3), players: m.players.slice(0, 5), playerCount: m.players.length,
+      })),
+    });
+  },
+
+  // ---- painel: resets protegidos por ADMIN_TOKEN
+  async 'POST /api/admin/reset'(req, res, body) {
+    if (String(body.token || '').trim().toUpperCase() !== ADMIN_TOKEN.toUpperCase())
+      return json(res, 403, { error: 'Token de administrador inválido.' });
+
+    const what = body.what;
+    if (what === 'history') {
+      history = [];
+      store.flush('history.json', history);
+      return json(res, 200, { ok: true, msg: 'Histórico apagado.' });
+    }
+    if (what === 'rooms') {
+      const n = rooms.size;
+      for (const room of [...rooms.values()]) closeRoom(room);
+      store.flush('rooms.json', []);
+      return json(res, 200, { ok: true, msg: `${n} sala(s) encerrada(s).` });
+    }
+    if (what === 'all') {
+      const n = rooms.size;
+      for (const room of [...rooms.values()]) closeRoom(room);
+      history = [];
+      store.flush('rooms.json', []);
+      store.flush('history.json', []);
+      return json(res, 200, { ok: true, msg: `Tudo zerado: ${n} sala(s) e todo o histórico.` });
+    }
+    if (what === 'match' && body.id) {
+      const before = history.length;
+      history = history.filter((m) => m.id !== body.id);
+      store.flush('history.json', history);
+      return json(res, 200, { ok: true, msg: before === history.length ? 'Partida não encontrada.' : 'Partida removida.' });
+    }
+    json(res, 400, { error: 'Nada para resetar.' });
+  },
 };
 
 const server = http.createServer(async (req, res) => {
@@ -518,6 +737,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/health') return json(res, 200, { ok: true, rooms: rooms.size });
   if (url.pathname === '/' || url.pathname === '/play') return serveStatic(res, 'index.html');
   if (url.pathname === '/host' || url.pathname === '/telao') return serveStatic(res, 'host.html');
+  if (url.pathname === '/historico' || url.pathname === '/admin') return serveStatic(res, 'historico.html');
   return serveStatic(res, url.pathname.replace(/^\/+/, '') || 'index.html');
 });
 
@@ -531,6 +751,17 @@ setInterval(() => {
   }
 }, 60000).unref();
 
+// salva o estado antes de o container morrer (redeploy do Coolify manda SIGTERM)
+function shutdown(signal) {
+  console.log(`\n${signal} recebido — salvando estado…`);
+  store.flush('rooms.json', [...rooms.values()].map(roomToJSON));
+  store.flush('history.json', history);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 server.listen(PORT, HOST, () => {
   const nets = os.networkInterfaces();
   const lan = Object.values(nets).flat().find((n) => n && n.family === 'IPv4' && !n.internal);
@@ -540,6 +771,10 @@ server.listen(PORT, HOST, () => {
   console.log('  ╰──────────────────────────────────────────────╯');
   console.log(`   Telão (host):  http://localhost:${PORT}/host`);
   console.log(`   Jogadores:     http://localhost:${PORT}/`);
+  console.log(`   Histórico:     http://localhost:${PORT}/historico`);
   if (lan) console.log(`   Na rede local: http://${lan.address}:${PORT}/`);
+  store.init();
+  loadFromDisk();
+  console.log(`   Token admin:   ${ADMIN_TOKEN}${ADMIN_TOKEN_GERADO ? '  (sorteado — defina ADMIN_TOKEN para fixar)' : '  (via ADMIN_TOKEN)'}`);
   console.log('');
 });

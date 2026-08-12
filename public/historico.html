@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07070d">
+<title>Histórico · Quiz de Requisitos</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--stroke); color: var(--txt-dim);
+    border-radius: 999px; padding: 9px 17px; font: inherit; font-size: 14px; font-weight: 650; cursor: pointer;
+    transition: all .16s;
+  }
+  .tab:hover { color: var(--txt); border-color: var(--stroke-2); }
+  .tab.on { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 8px 22px rgba(124, 92, 255, .35); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--stroke); border-radius: 14px; padding: 15px; }
+  .stat b { display: block; font-size: 27px; font-weight: 900; letter-spacing: -.02em; }
+  .stat span { color: var(--txt-dim); font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .match { background: var(--panel); border: 1px solid var(--stroke); border-radius: 15px; padding: 15px; }
+  .match + .match { margin-top: 10px; }
+  .danger { background: linear-gradient(135deg, #f43f5e, #b91c1c); box-shadow: 0 10px 26px rgba(244, 63, 94, .35); }
+  .ok-msg { color: #86efac; background: rgba(34, 197, 94, .12); border: 1px solid rgba(34, 197, 94, .35); padding: 11px 14px; border-radius: 12px; font-size: 14px; }
+  .ok-msg:empty { display: none; }
+  .dot-live { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand" style="margin-bottom:6px">
+    <span class="dot">📊</span>
+    <div><h1>Histórico &amp; Ranking</h1><small>Quiz de Requisitos</small></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab on" data-t="players">🏅 Jogadores</button>
+    <button class="tab" data-t="teams">🛡️ Equipes</button>
+    <button class="tab" data-t="matches">🕓 Partidas</button>
+    <button class="tab" data-t="admin">⚙️ Administração</button>
+  </div>
+
+  <section class="card" id="v-players">
+    <h2 style="font-size:19px;margin-bottom:14px">Ranking geral de jogadores</h2>
+    <div class="rank" id="players"></div>
+  </section>
+
+  <section class="card hidden" id="v-teams">
+    <h2 style="font-size:19px;margin-bottom:14px">Ranking geral de equipes</h2>
+    <div class="rank" id="teams"></div>
+  </section>
+
+  <section class="card hidden" id="v-matches">
+    <h2 style="font-size:19px;margin-bottom:14px">Últimas partidas</h2>
+    <div id="matches"></div>
+  </section>
+
+  <section class="card hidden stack" id="v-admin">
+    <div>
+      <h2 style="font-size:19px">Administração</h2>
+      <p class="muted">O token aparece no log do servidor no boot. Fixe com a variável <code>ADMIN_TOKEN</code> no Coolify.</p>
+    </div>
+    <div>
+      <label for="i-token">Token de administrador</label>
+      <input id="i-token" placeholder="ex.: A1B2C3D4" autocomplete="off">
+    </div>
+    <div class="ok-msg" id="a-ok"></div>
+    <div class="err" id="a-err"></div>
+    <div class="stack">
+      <button class="btn ghost" data-reset="rooms">Encerrar todas as salas ativas</button>
+      <button class="btn ghost" data-reset="history">Apagar o histórico de partidas</button>
+      <button class="btn danger" data-reset="all">Zerar tudo (salas + histórico)</button>
+    </div>
+    <p class="muted">Resets são imediatos e não têm desfazer. As perguntas nunca são apagadas.</p>
+  </section>
+
+  <p class="muted" style="text-align:center">
+    <a href="/host" style="color:var(--accent-2)">Telão</a> ·
+    <a href="/" style="color:var(--accent-2)">Entrar numa sala</a>
+  </p>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let data = null;
+
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b));
+  ['players', 'teams', 'matches', 'admin'].forEach((v) =>
+    $('#v-' + v).classList.toggle('hidden', v !== b.dataset.t));
+}));
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Erro.');
+  return j;
+}
+
+function row(i, who, sub, val, unit, color) {
+  return `<div class="rank-row ${i === 0 ? 'top1' : ''}">
+    <span class="pos">${i + 1}</span>
+    <span class="who">${who}<span class="sub"> · ${sub}</span></span>
+    <span class="val" style="color:${color || 'var(--txt)'}">${val}<span class="sub"> ${unit}</span></span>
+  </div>`;
+}
+
+const dataFmt = (ts) => new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+async function load() {
+  data = await post('/api/history');
+
+  $('#stats').innerHTML = `
+    <div class="stat"><b>${data.partidas}</b><span>partidas salvas</span></div>
+    <div class="stat"><b>${data.ranking.players.length}</b><span>jogadores</span></div>
+    <div class="stat"><b>${data.salasAtivas}</b><span>salas ativas</span></div>
+    <div class="stat"><b style="color:${data.persistente ? 'var(--ok)' : '#fbbf24'}">
+      <span class="dot-live" style="background:${data.persistente ? 'var(--ok)' : '#fbbf24'}"></span>
+      ${data.persistente ? 'Salvo' : 'Memória'}</b>
+      <span>${data.persistente ? 'gravando em disco' : 'volume não gravável'}</span></div>`;
+
+  $('#players').innerHTML = data.ranking.players.length
+    ? data.ranking.players.slice(0, 50).map((p, i) => row(
+        i, esc(p.name),
+        `${p.matches} ${p.matches === 1 ? 'partida' : 'partidas'} · ${p.wins} ${p.wins === 1 ? 'vitória' : 'vitórias'} · ${p.answered ? Math.round((p.hits / p.answered) * 100) : 0}% de acerto`,
+        p.points.toLocaleString('pt-BR'), 'pts')).join('')
+    : '<p class="muted">Nenhuma partida encerrada ainda. Jogue uma no telão que ela aparece aqui.</p>';
+
+  $('#teams').innerHTML = data.ranking.teams.length
+    ? data.ranking.teams.slice(0, 50).map((t, i) => row(
+        i, `${esc(t.emoji || '🛡️')} ${esc(t.name)}`,
+        `${t.matches} ${t.matches === 1 ? 'partida' : 'partidas'} · ${t.wins} ${t.wins === 1 ? 'vitória' : 'vitórias'} · média ${t.avg}`,
+        t.points.toLocaleString('pt-BR'), 'pts', t.color)).join('')
+    : '<p class="muted">Nenhuma equipe registrada ainda.</p>';
+
+  $('#matches').innerHTML = data.matches.length ? data.matches.map((m) => `
+    <div class="match">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+        <b>Sala ${esc(m.code)} <span class="sub muted" style="font-weight:500">· ${dataFmt(m.endedAt)}</span></b>
+        <span class="chip">${m.playerCount} ${m.playerCount === 1 ? 'jogador' : 'jogadores'} · ${m.questionCount} perguntas</span>
+      </div>
+      ${m.teams.length ? `<div class="muted" style="margin-bottom:6px">Equipes: ${m.teams.map((t, i) =>
+        `${i === 0 ? '🥇 ' : ''}<b style="color:${t.color}">${esc(t.emoji)} ${esc(t.name)}</b> ${t.score}`).join(' · ')}</div>` : ''}
+      <div class="muted">Top: ${m.players.map((p, i) => `${i === 0 ? '👑 ' : ''}${esc(p.name)} (${p.score})`).join(' · ')}</div>
+    </div>`).join('') : '<p class="muted">Sem partidas registradas.</p>';
+}
+
+document.querySelectorAll('[data-reset]').forEach((b) => b.addEventListener('click', async () => {
+  const what = b.dataset.reset;
+  const labels = { rooms: 'encerrar TODAS as salas ativas', history: 'apagar TODO o histórico', all: 'apagar salas E histórico' };
+  $('#a-ok').textContent = ''; $('#a-err').textContent = '';
+  const token = $('#i-token').value.trim();
+  if (!token) return ($('#a-err').textContent = 'Informe o token de administrador.');
+  if (!confirm(`Tem certeza que quer ${labels[what]}? Não dá pra desfazer.`)) return;
+  b.disabled = true;
+  try {
+    const r = await post('/api/admin/reset', { token, what });
+    $('#a-ok').textContent = r.msg;
+    await load();
+  } catch (e) { $('#a-err').textContent = e.message; }
+  finally { b.disabled = false; }
+}));
+
+load().catch((e) => { $('#stats').innerHTML = `<p class="err">${esc(e.message)}</p>`; });
+setInterval(() => load().catch(() => {}), 15000);
+</script>
+</body>
+</html>

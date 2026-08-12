@@ -4,12 +4,19 @@ WORKDIR /app
 
 # Sem dependências externas: basta copiar o código.
 COPY package.json ./
-COPY server.js questions.js ./
+COPY server.js questions.js store.js ./
 COPY public ./public
+
+# Diretório de dados já criado com o dono certo — um volume nomeado do Docker
+# herda essa permissão ao ser montado vazio pela primeira vez.
+RUN mkdir -p /app/data && chown -R node:node /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV DATA_DIR=/app/data
+
 EXPOSE 3000
+VOLUME ["/app/data"]
 
 USER node
 

@@ -236,7 +236,27 @@ function connect() {
 // ---------------- render ----------------
 function render() {
   const s = snap;
-  if (!s || !s.you) return;
+  if (!s) return;
+
+  // sala encerrada pelo apresentador
+  if (s.phase === 'closed') {
+    if (es) es.close();
+    localStorage.removeItem('qrf.pid');
+    show('s-join');
+    $('#join-err').textContent = 'O apresentador encerrou a sala. Até a próxima! 👋';
+    return;
+  }
+
+  // a sala foi zerada e você não está mais nela: volta pro início
+  if (!s.you) {
+    if (es) es.close();
+    localStorage.removeItem('qrf.pid');
+    me.pid = '';
+    show('s-join');
+    $('#join-err').textContent = 'A sala foi reiniciada. Entre de novo com o mesmo código.';
+    return;
+  }
+
   const phaseChanged = s.phase !== lastPhase;
   lastPhase = s.phase;
 

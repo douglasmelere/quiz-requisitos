@@ -62,6 +62,11 @@
           <div class="players" id="l-players"></div>
           <p class="muted" id="l-none">Ninguém entrou ainda…</p>
           <button class="btn" id="b-start" disabled>Iniciar partida</button>
+          <div class="row" style="justify-content:center">
+            <button class="btn ghost slim" data-act="reset-teams">Desfazer equipes</button>
+            <button class="btn ghost slim" data-act="reset-all">Zerar sala</button>
+            <button class="btn ghost slim" data-act="close">Encerrar</button>
+          </div>
         </div>
       </div>
       <div class="card stack">
@@ -129,7 +134,23 @@
       </div>
       <div class="row" style="justify-content:center">
         <button class="btn slim" id="b-again">Jogar de novo (mesmas equipes)</button>
+        <button class="btn ghost slim" data-act="reset-teams">Refazer equipes</button>
+        <button class="btn ghost slim" data-act="reset-all">Zerar sala</button>
+        <button class="btn ghost slim" data-act="close">Encerrar sala</button>
       </div>
+      <p class="muted" style="text-align:center">O resultado desta partida já foi salvo em
+        <a href="/historico" style="color:var(--accent-2)">histórico</a>.</p>
+    </div>
+  </section>
+
+  <!-- ============ sala encerrada ============ -->
+  <section class="screen" id="s-closed">
+    <div style="max-width:460px;margin:min(12vh,110px) auto 0" class="card stack" style="text-align:center">
+      <div style="font-size:50px">👋</div>
+      <h2>Sala encerrada</h2>
+      <p class="muted">O resultado das partidas ficou salvo no histórico.</p>
+      <button class="btn" onclick="localStorage.removeItem('qrf.hostCode');location.reload()">Criar uma nova sala</button>
+      <a href="/historico" class="btn ghost" style="text-decoration:none">Ver histórico</a>
     </div>
   </section>
 
@@ -171,6 +192,20 @@ $('#b-start').addEventListener('click', () => post('/api/host/start', { code, ho
 $('#b-skip').addEventListener('click', () => post('/api/host/skip', { code, hostToken }).catch(() => {}));
 $('#b-again').addEventListener('click', () => post('/api/host/restart', { code, hostToken }).catch(() => {}));
 
+const CONFIRMA = {
+  'reset-teams': 'Desfazer todas as equipes? Os jogadores continuam na sala e escolhem de novo.',
+  'reset-all': 'Zerar a sala? Sai todo mundo, some as equipes e o placar volta a zero.',
+  'close': 'Encerrar a sala de vez? Quem estiver conectado é desconectado.',
+};
+document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async () => {
+  const act = b.dataset.act;
+  if (!confirm(CONFIRMA[act])) return;
+  b.disabled = true;
+  try { await post(`/api/host/${act}`, { code, hostToken }); }
+  catch (e) { alert(e.message); }
+  finally { b.disabled = false; }
+}));
+
 function connect() {
   if (es) es.close();
   es = new EventSource(`/api/stream?code=${encodeURIComponent(code)}`);
@@ -187,6 +222,7 @@ function render() {
   else if (s.phase === 'question') { show('s-q'); renderQuestion(s, fresh); }
   else if (s.phase === 'reveal') { show('s-reveal'); renderReveal(s); }
   else if (s.phase === 'ended') { show('s-end'); renderEnd(s); }
+  else if (s.phase === 'closed') { show('s-closed'); localStorage.removeItem('qrf.hostCode'); if (es) es.close(); }
 }
 
 function renderLobby(s) {

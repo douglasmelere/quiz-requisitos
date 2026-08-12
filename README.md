@@ -3,9 +3,10 @@
 Quiz multiplayer **em tempo real** sobre Requisitos Funcionais, Não Funcionais e Regras de Negócio.
 Estilo Kahoot: um **telão** mostra a pergunta e o placar ao vivo, a galera responde pelo **celular** e joga em **equipes**.
 
-- 41 perguntas (classificação RF/RNF/RN + múltipla escolha) com explicação em cada resposta
+- 42 perguntas (classificação RF/RNF/RN + múltipla escolha) com explicação em cada resposta
 - Equipes criadas pelos próprios jogadores no lobby
 - Placar ao vivo, bônus por velocidade e por sequência de acertos
+- Histórico e ranking acumulado salvos em volume, com painel de reset
 - **Zero dependências** — Node puro, tempo real com SSE
 
 ## Rodar
@@ -29,32 +30,73 @@ Na mesma rede Wi-Fi, a galera acessa pelo IP da máquina (o servidor imprime no 
 **Pontuação:** 500 pontos base + até 500 por velocidade + até 300 de bônus por sequência.
 A nota da equipe é a **média** dos integrantes — assim equipe pequena não é penalizada.
 
+## Histórico, persistência e reset
+
+Ao fim de cada partida o resultado é gravado em `DATA_DIR` (padrão `./data`, `/app/data` no Docker):
+
+```
+data/history.json   partidas encerradas (ranking acumulado sai daqui)
+data/rooms.json     salas ativas — sobrevivem a restart/redeploy
+```
+
+A página **`/historico`** mostra o ranking geral de jogadores e equipes (pontos, vitórias, % de acerto)
+e a lista das últimas partidas. Se o diretório não for gravável, o app avisa no log, marca
+"Memória" no painel e continua funcionando normalmente — só não guarda nada.
+
+Salas em andamento também são salvas: num redeploy o servidor recebe `SIGTERM`, grava tudo,
+e ao subir de novo retoma as salas com placar e equipes intactos (a pergunta que estava no ar recomeça).
+
+### Resets
+
+No **telão** (só quem tem o token do host, gerado na criação da sala):
+
+| Botão | O que faz |
+|---|---|
+| Jogar de novo | zera o placar, mantém jogadores e equipes |
+| Desfazer / Refazer equipes | apaga as equipes, todo mundo continua na sala |
+| Zerar sala | tira todo mundo, apaga equipes e placar, volta ao lobby |
+| Encerrar sala | derruba a sala de vez e desconecta a galera |
+
+Em **`/historico` → Administração** (protegido por `ADMIN_TOKEN`):
+encerrar todas as salas ativas, apagar o histórico, ou zerar tudo.
+Se você não definir `ADMIN_TOKEN`, o servidor sorteia um a cada boot e imprime no log.
+
 ## Deploy no Coolify
 
 1. Suba a pasta num repositório Git e crie uma **Application** apontando pra ele.
 2. **Build Pack: Dockerfile** (o `Dockerfile` já está aqui). Nixpacks também funciona.
 3. **Port exposed: `3000`**.
-4. Ative o domínio/HTTPS normalmente — o SSE já vai com `X-Accel-Buffering: no` e `Cache-Control: no-transform`, então passa limpo pelo proxy.
+4. Em **Storages**, adicione um **volume** com destino **`/app/data`** (é o que guarda histórico e salas).
+5. Em **Environment Variables**, defina `ADMIN_TOKEN` com uma senha sua — senão o token muda a cada deploy.
+6. Ative o domínio/HTTPS normalmente — o SSE já vai com `X-Accel-Buffering: no` e `Cache-Control: no-transform`, então passa limpo pelo proxy.
 
-⚠️ **Mantenha 1 réplica.** O estado das salas fica em memória; com 2+ instâncias os jogadores cairiam em processos diferentes. Para escalar horizontalmente seria preciso mover o estado pra Redis.
+⚠️ **Mantenha 1 réplica.** O estado das salas fica em memória (com snapshot em disco); com 2+ instâncias os jogadores cairiam em processos diferentes. Para escalar horizontalmente seria preciso mover o estado pra Redis.
+
+> Se o log mostrar `⚠ /app/data não é gravável (EACCES)`, o volume foi montado como root.
+> Use um **volume nomeado** (o Docker herda o dono de `/app/data`, já ajustado no Dockerfile) em vez de bind mount para um caminho do host.
 
 ### Variáveis de ambiente (todas opcionais)
 
 | Variável | Padrão | O que faz |
 |---|---|---|
 | `PORT` | `3000` | Porta HTTP (o Coolify injeta) |
+| `DATA_DIR` | `/app/data` | Onde grava histórico e salas — aponte pro volume |
+| `ADMIN_TOKEN` | sorteado | Senha do painel de reset em `/historico` |
 | `QUESTION_MS` | `25000` | Tempo de cada pergunta |
 | `REVEAL_MS` | `9000` | Tempo mostrando a resposta |
 | `ROUND_SIZE` | `12` | Perguntas por partida (o host também escolhe na tela) |
+| `MAX_HISTORY` | `300` | Quantas partidas ficam guardadas |
 
 ## Arquivos
 
 ```
-server.js          API + SSE + máquina de estados da partida
-questions.js       banco de perguntas (é só editar pra adicionar as suas)
-public/index.html  app do jogador (celular)
-public/host.html   telão do apresentador
-public/style.css   design compartilhado
+server.js              API + SSE + máquina de estados da partida
+store.js               persistência em JSON (escrita atômica, debounce)
+questions.js           banco de perguntas (é só editar pra adicionar as suas)
+public/index.html      app do jogador (celular)
+public/host.html       telão do apresentador
+public/historico.html  ranking acumulado + painel de reset
+public/style.css       design compartilhado
 ```
 
 Para adicionar perguntas, edite `questions.js`:
