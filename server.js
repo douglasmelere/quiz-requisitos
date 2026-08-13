@@ -615,6 +615,16 @@ const api = {
     json(res, 200, { ok: true });
   },
 
+  // ---- encerra a partida no meio e vai direto para o pódio
+  async 'POST /api/host/finish'(req, res, body) {
+    const room = getRoom(body.code);
+    if (!room || room.hostToken !== body.hostToken) return json(res, 403, { error: 'Sem permissão.' });
+    if (room.phase !== 'question' && room.phase !== 'reveal')
+      return json(res, 409, { error: 'Nenhuma partida em andamento.' });
+    endGame(room);
+    json(res, 200, { ok: true });
+  },
+
   // ---- reset: desfaz todas as equipes, mantém os jogadores na sala
   async 'POST /api/host/reset-teams'(req, res, body) {
     const room = getRoom(body.code);
