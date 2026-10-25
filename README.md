@@ -9,7 +9,13 @@ Estilo Kahoot: um **telão** mostra a pergunta e o placar ao vivo, a galera resp
 - Histórico e ranking acumulado salvos em volume, com painel de reset
 - **Zero dependências** — Node puro, tempo real com SSE
 
+## Contexto técnico
+
+Projeto educacional para trabalhar classificação de requisitos de software em grupo. O servidor mantém a máquina de estados da partida, recebe ações por HTTP e distribui atualizações com Server-Sent Events (SSE). A persistência usa arquivos JSON com escrita atômica.
+
 ## Rodar
+
+Use uma versão LTS mantida do Node.js (recomendado: Node.js 22). Não é necessário instalar pacotes.
 
 ```bash
 node server.js
@@ -80,7 +86,7 @@ Se você não definir `ADMIN_TOKEN`, o servidor sorteia um a cada boot e imprime
 | Variável | Padrão | O que faz |
 |---|---|---|
 | `PORT` | `3000` | Porta HTTP (o Coolify injeta) |
-| `DATA_DIR` | `/app/data` | Onde grava histórico e salas — aponte pro volume |
+| `DATA_DIR` | `./data` (Docker: `/app/data`) | Onde grava histórico e salas — aponte pro volume |
 | `ADMIN_TOKEN` | sorteado | Senha do painel de reset em `/historico` |
 | `QUESTION_MS` | `25000` | Tempo de cada pergunta |
 | `REVEAL_MS` | `9000` | Tempo mostrando a resposta |
@@ -105,3 +111,9 @@ Para adicionar perguntas, edite `questions.js`:
 c('Frase para classificar…', 0, 'Explicação.')   // 0=RF, 1=RNF, 2=RN
 m('Pergunta?', ['a', 'b', 'c', 'd'], 1, 'Explicação.')  // índice da correta
 ```
+
+## Verificação rápida e limitações
+
+Com o servidor local iniciado, `GET /health` deve responder com `ok: true`. Abra `/host`, crie uma sala e conecte um jogador em outra aba para verificar o fluxo de entrada, equipe, pergunta e placar.
+
+Não há suíte automatizada de testes no repositório. O estado das salas é local ao processo; o projeto foi organizado para uma instância. Antes de abrir uma sessão pública, configure `ADMIN_TOKEN`, use HTTPS e revise limites de uso e retenção dos nomes no histórico. Não inclua dados pessoais reais em demonstrações.
